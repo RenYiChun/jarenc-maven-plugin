@@ -9,6 +9,8 @@ import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.zip.CRC32;
+import java.util.zip.ZipOutputStream;
 import lombok.Setter;
 import org.apache.commons.codec.binary.Hex;
 import org.apache.commons.compress.archivers.jar.JarArchiveEntry;
@@ -196,11 +198,15 @@ public class JarEncMojo extends AbstractMojo {
                 } else {
                     jarArchiveEntry = new JarArchiveEntry(entryName);
                     jarArchiveEntry.setTime(entry.getTime());
-                    zos.putArchiveEntry(jarArchiveEntry);
+                    jarArchiveEntry.setMethod(ZipOutputStream.STORED); // 设置为 STORED 方式
                     
                     ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
                     fetchByteData(zis, outputStream);
-                    zos.write(outputStream.toByteArray());
+                    byte[] data = outputStream.toByteArray();
+                    jarArchiveEntry.setSize(data.length); // 使用实际数据大小
+                    jarArchiveEntry.setCrc(CRC32Util.calculateCRC32(data)); // 计算 CRC 值
+                    zos.putArchiveEntry(jarArchiveEntry); // 在写入之前设置大小和 CRC
+                    zos.write(data);
                     zos.flush();
                 }
                 zos.closeArchiveEntry();
@@ -208,13 +214,23 @@ public class JarEncMojo extends AbstractMojo {
         } catch (Throwable cause) {
             getLog().error(cause);
         }
-        // @formatter:on
+    }
+
+    public static class CRC32Util {
+        public static long calculateCRC32(byte[] bytes) {
+            CRC32 crc = new CRC32();
+            crc.update(bytes, 0, bytes.length); // 更新 CRC32 的值
+            return crc.getValue();
+        }
     }
     
     private boolean matchRule(String[] rules, String entryName) {
         boolean match = false;
         for (String rule : rules) {
-            if (entryName.toLowerCase().startsWith(rule.toLowerCase())) {
+            String lowerCase = rule.toLowerCase();
+            String once = lowerCase.replace(".", "/");
+            String two = once.replace(".", "\\");
+            if (entryName.toLowerCase().contains(once) || entryName.toLowerCase().contains(two)) {
                 match = true;
                 break;
             }
