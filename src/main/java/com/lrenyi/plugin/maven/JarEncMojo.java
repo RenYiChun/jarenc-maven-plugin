@@ -34,6 +34,8 @@ public class JarEncMojo extends AbstractMojo {
     private MavenProject project;
     @Parameter(property = "encrypt.sourceDir", required = true, defaultValue = "${project.build.directory}")
     private File sourceDir;
+    @Parameter(property = "encrypt.skip", defaultValue = "false")
+    private boolean skip = false;
     @Parameter(property = "encrypt.targetDir", required = true, defaultValue = "${project.build.directory}")
     private File targetDir;
     @Parameter(property = "encrypt.sourceJar")
@@ -55,8 +57,8 @@ public class JarEncMojo extends AbstractMojo {
     public void execute() {
         Log log = this.getLog();
         String packaging = this.project.getPackaging();
-        if (!"jar".equalsIgnoreCase(packaging)) {
-            log.info("skip for jar encrypt, because project packaging not jar. ");
+        if (!"jar".equalsIgnoreCase(packaging) || skip) {
+            log.info("skip for jar encrypt, because project packaging not jar, or skip:" + skip);
             return;
         }
         if (StringUtils.isEmpty(aesKey) || StringUtils.isEmpty(aesIv)) {
@@ -196,13 +198,18 @@ public class JarEncMojo extends AbstractMojo {
                     zos.write(outputStream.toByteArray());
                     zos.flush();
                 } else {
+                    ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+                    fetchByteData(zis, outputStream);
+                    byte[] data = outputStream.toByteArray();
+                    if (src.getAbsolutePath().contains("spring-shell-core")
+                            && entryName.contains("spring.factories")
+                            && data.length == 0) {
+                        continue;
+                    }
                     jarArchiveEntry = new JarArchiveEntry(entryName);
                     jarArchiveEntry.setTime(entry.getTime());
                     jarArchiveEntry.setMethod(ZipOutputStream.STORED); // 设置为 STORED 方式
                     
-                    ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-                    fetchByteData(zis, outputStream);
-                    byte[] data = outputStream.toByteArray();
                     jarArchiveEntry.setSize(data.length); // 使用实际数据大小
                     jarArchiveEntry.setCrc(CRC32Util.calculateCRC32(data)); // 计算 CRC 值
                     zos.putArchiveEntry(jarArchiveEntry); // 在写入之前设置大小和 CRC
